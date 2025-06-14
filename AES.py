@@ -28,6 +28,7 @@ from langchain_community.document_loaders import PyPDFLoader
 from langchain.text_splitter import RecursiveCharacterTextSplitter
 from langchain.chains import RetrievalQA
 from langchain.callbacks.base import BaseCallbackHandler
+import chromadb
 from chromadb.config import Settings
 
 # Custom callback handler for streaming
@@ -296,12 +297,13 @@ class PDFProcessor:
             model="models/embedding-001",
             google_api_key=config.GOOGLE_API_KEY
         )
-        # Configure Chroma settings with DuckDB
-        self.chroma_settings = Settings(
-            chroma_db_impl="duckdb",  # Use DuckDB implementation
-            persist_directory=str(self.config.VECTOR_DB_DIR),  # Persist to vector DB directory
-            anonymized_telemetry=False,  # Disable telemetry
-            allow_reset=True  # Allow resetting the database
+        # Initialize Chroma client with new configuration
+        self.chroma_client = chromadb.PersistentClient(
+            path=str(self.config.VECTOR_DB_DIR),
+            settings=Settings(
+                anonymized_telemetry=False,
+                allow_reset=True
+            )
         )
     
     def get_file_hash(self, file_path: Path) -> str:
@@ -399,13 +401,14 @@ class PDFProcessor:
             doc_db_path = self.get_document_specific_db_path(file_hash)
             doc_db_path.mkdir(parents=True, exist_ok=True)
             
-            # Create a new Chroma instance with DuckDB
+            # Create a new Chroma instance with the new client
+            collection_name = f"doc_{file_hash}"
             vectorstore = Chroma.from_documents(
                 documents=documents,
                 embedding=self.embeddings,
-                persist_directory=str(doc_db_path),
-                client_settings=self.chroma_settings,
-                collection_metadata={"hnsw:space": "cosine"}  # Use cosine similarity
+                client=self.chroma_client,
+                collection_name=collection_name,
+                persist_directory=str(doc_db_path)
             )
             vectorstore.persist()
             return vectorstore
@@ -417,14 +420,15 @@ class PDFProcessor:
         """Load document-specific vector store"""
         try:
             doc_db_path = self.get_document_specific_db_path(file_hash)
+            collection_name = f"doc_{file_hash}"
             
             if doc_db_path.exists() and any(doc_db_path.iterdir()):
-                # Load existing Chroma instance with DuckDB
+                # Load existing Chroma instance with new client
                 vectorstore = Chroma(
-                    persist_directory=str(doc_db_path),
+                    client=self.chroma_client,
+                    collection_name=collection_name,
                     embedding_function=self.embeddings,
-                    client_settings=self.chroma_settings,
-                    collection_metadata={"hnsw:space": "cosine"}  # Use cosine similarity
+                    persist_directory=str(doc_db_path)
                 )
                 logger.info(f"Vectorstore loaded for document hash: {file_hash}")
                 return vectorstore
