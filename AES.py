@@ -297,13 +297,9 @@ class PDFProcessor:
             model="models/embedding-001",
             google_api_key=config.GOOGLE_API_KEY
         )
-        # Initialize Chroma client with new configuration
+        # Initialize Chroma client with new configuration (no deprecated settings)
         self.chroma_client = chromadb.PersistentClient(
-            path=str(self.config.VECTOR_DB_DIR),
-            settings=Settings(
-                anonymized_telemetry=False,
-                allow_reset=True
-            )
+            path=str(self.config.VECTOR_DB_DIR)
         )
     
     def get_file_hash(self, file_path: Path) -> str:
@@ -346,12 +342,14 @@ class PDFProcessor:
             
             file_hash = self.get_file_hash(file_path)
             metadata = self.load_metadata()
-            doc_db_path = self.get_document_specific_db_path(file_hash)
             
-            # Check if metadata exists and vector db directory exists
-            is_processed = (file_hash in metadata and 
-                          doc_db_path.exists() and 
-                          any(doc_db_path.iterdir()))
+            # Check if collection exists in Chroma
+            try:
+                collection_name = f"doc_{file_hash}"
+                collection = self.chroma_client.get_collection(collection_name)
+                is_processed = file_hash in metadata and collection.count() > 0
+            except Exception:
+                is_processed = False
             
             return is_processed, file_hash
         except Exception as e:
@@ -397,21 +395,35 @@ class PDFProcessor:
     def create_vectorstore(self, documents: List, file_hash: str) -> Chroma:
         """Create document-specific vector store"""
         try:
-            # Get document-specific database path
-            doc_db_path = self.get_document_specific_db_path(file_hash)
-            doc_db_path.mkdir(parents=True, exist_ok=True)
-            
-            # Create a new Chroma instance with the new client
             collection_name = f"doc_{file_hash}"
-            vectorstore = Chroma.from_documents(
-                documents=documents,
-                embedding=self.embeddings,
+            
+            # Try to get existing collection first
+            try:
+                collection = self.chroma_client.get_collection(collection_name)
+                logger.info(f"Collection {collection_name} already exists, deleting and recreating")
+                self.chroma_client.delete_collection(collection_name)
+            except Exception:
+                # Collection doesn't exist, which is fine
+                pass
+            
+            # Create new collection
+            collection = self.chroma_client.create_collection(
+                name=collection_name,
+                metadata={"hnsw:space": "cosine"}
+            )
+            
+            # Create vectorstore using the new client approach
+            vectorstore = Chroma(
                 client=self.chroma_client,
                 collection_name=collection_name,
-                persist_directory=str(doc_db_path)
+                embedding_function=self.embeddings
             )
-            vectorstore.persist()
+            
+            # Add documents to the vectorstore
+            vectorstore.add_documents(documents)
+            
             return vectorstore
+            
         except Exception as e:
             logger.error(f"Error creating vector store: {str(e)}")
             raise
@@ -419,19 +431,27 @@ class PDFProcessor:
     def load_vectorstore(self, file_hash: str) -> Optional[Chroma]:
         """Load document-specific vector store"""
         try:
-            doc_db_path = self.get_document_specific_db_path(file_hash)
             collection_name = f"doc_{file_hash}"
             
-            if doc_db_path.exists() and any(doc_db_path.iterdir()):
-                # Load existing Chroma instance with new client
-                vectorstore = Chroma(
-                    client=self.chroma_client,
-                    collection_name=collection_name,
-                    embedding_function=self.embeddings,
-                    persist_directory=str(doc_db_path)
-                )
-                logger.info(f"Vectorstore loaded for document hash: {file_hash}")
-                return vectorstore
+            # Check if collection exists
+            try:
+                collection = self.chroma_client.get_collection(collection_name)
+                if collection.count() > 0:
+                    # Load existing Chroma instance
+                    vectorstore = Chroma(
+                        client=self.chroma_client,
+                        collection_name=collection_name,
+                        embedding_function=self.embeddings
+                    )
+                    logger.info(f"Vectorstore loaded for document hash: {file_hash}")
+                    return vectorstore
+                else:
+                    logger.warning(f"Collection {collection_name} exists but is empty")
+                    return None
+            except Exception as e:
+                logger.warning(f"Collection {collection_name} does not exist: {e}")
+                return None
+                
         except Exception as e:
             logger.warning(f"Could not load vectorstore for {file_hash}: {e}")
         return None
@@ -439,16 +459,33 @@ class PDFProcessor:
     def cleanup_old_vectorstores(self, keep_hash: str = None):
         """Clean up old vector stores (optional - for storage management)"""
         try:
-            if not self.config.VECTOR_DB_DIR.exists():
-                return
-                
-            for item in self.config.VECTOR_DB_DIR.iterdir():
-                if item.is_dir() and item.name.startswith("doc_"):
-                    if keep_hash is None or not item.name.endswith(keep_hash):
-                        shutil.rmtree(item)
-                        logger.info(f"Cleaned up old vectorstore: {item}")
+            # List all collections
+            collections = self.chroma_client.list_collections()
+            
+            for collection in collections:
+                collection_name = collection.name
+                if collection_name.startswith("doc_"):
+                    # Extract hash from collection name
+                    collection_hash = collection_name.replace("doc_", "")
+                    if keep_hash is None or collection_hash != keep_hash:
+                        try:
+                            self.chroma_client.delete_collection(collection_name)
+                            logger.info(f"Cleaned up old collection: {collection_name}")
+                        except Exception as e:
+                            logger.warning(f"Error deleting collection {collection_name}: {e}")
+                            
         except Exception as e:
             logger.warning(f"Error cleaning up old vectorstores: {e}")
+
+    def reset_all_collections(self):
+        """Reset all collections - useful for complete cleanup"""
+        try:
+            collections = self.chroma_client.list_collections()
+            for collection in collections:
+                self.chroma_client.delete_collection(collection.name)
+            logger.info("All collections have been reset")
+        except Exception as e:
+            logger.error(f"Error resetting collections: {e}")
 
 class ChatbotUI:
     """Handles the Streamlit UI"""
