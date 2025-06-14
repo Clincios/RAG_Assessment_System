@@ -6,3 +6,4 @@ python-dotenv>=1.0.0
 chromadb>=0.4.22
 pypdf>=4.0.1 
 langchain_community>=0.3.1
+tornado<=6.4.2
