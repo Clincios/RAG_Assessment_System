@@ -28,6 +28,7 @@ from langchain_community.document_loaders import PyPDFLoader
 from langchain.text_splitter import RecursiveCharacterTextSplitter
 from langchain.chains import RetrievalQA
 from langchain.callbacks.base import BaseCallbackHandler
+from chromadb.config import Settings
 
 # Custom callback handler for streaming
 class StreamlitCallbackHandler(BaseCallbackHandler):
@@ -295,6 +296,11 @@ class PDFProcessor:
             model="models/embedding-001",
             google_api_key=config.GOOGLE_API_KEY
         )
+        # Configure Chroma settings
+        self.chroma_settings = Settings(
+            chroma_db_impl="duckdb",  # Use DuckDB instead of SQLite
+            persist_directory=str(self.config.VECTOR_DB_DIR)  # Use the configured vector DB directory
+        )
     
     def get_file_hash(self, file_path: Path) -> str:
         """Generate hash for file to check if it's already processed"""
@@ -394,7 +400,8 @@ class PDFProcessor:
             vectorstore = Chroma.from_documents(
                 documents=documents,
                 embedding=self.embeddings,
-                persist_directory=str(doc_db_path)
+                persist_directory=str(doc_db_path),
+                client_settings=self.chroma_settings  # Add the new settings
             )
             vectorstore.persist()
             return vectorstore
@@ -410,7 +417,8 @@ class PDFProcessor:
             if doc_db_path.exists() and any(doc_db_path.iterdir()):
                 vectorstore = Chroma(
                     persist_directory=str(doc_db_path),
-                    embedding_function=self.embeddings
+                    embedding_function=self.embeddings,
+                    client_settings=self.chroma_settings  # Add the new settings
                 )
                 logger.info(f"Vectorstore loaded for document hash: {file_hash}")
                 return vectorstore
