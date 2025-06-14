@@ -296,14 +296,13 @@ class PDFProcessor:
             model="models/embedding-001",
             google_api_key=config.GOOGLE_API_KEY
         )
-        # Configure Chroma settings with explicit DuckDB configuration
+        # Configure Chroma settings with DuckDB
         self.chroma_settings = Settings(
             chroma_db_impl="duckdb+parquet",  # Use DuckDB with Parquet storage
             persist_directory=str(self.config.VECTOR_DB_DIR),
             anonymized_telemetry=False,  # Disable telemetry
             allow_reset=True,  # Allow resetting the database
-            is_persistent=True,  # Enable persistence
-            sqlite_database=None  # Explicitly disable SQLite
+            is_persistent=True  # Enable persistence
         )
     
     def get_file_hash(self, file_path: Path) -> str:
