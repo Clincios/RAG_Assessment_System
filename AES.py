@@ -296,10 +296,14 @@ class PDFProcessor:
             model="models/embedding-001",
             google_api_key=config.GOOGLE_API_KEY
         )
-        # Configure Chroma settings
+        # Configure Chroma settings with explicit DuckDB configuration
         self.chroma_settings = Settings(
-            chroma_db_impl="duckdb",  # Use DuckDB instead of SQLite
-            persist_directory=str(self.config.VECTOR_DB_DIR)  # Use the configured vector DB directory
+            chroma_db_impl="duckdb+parquet",  # Use DuckDB with Parquet storage
+            persist_directory=str(self.config.VECTOR_DB_DIR),
+            anonymized_telemetry=False,  # Disable telemetry
+            allow_reset=True,  # Allow resetting the database
+            is_persistent=True,  # Enable persistence
+            sqlite_database=None  # Explicitly disable SQLite
         )
     
     def get_file_hash(self, file_path: Path) -> str:
@@ -397,11 +401,13 @@ class PDFProcessor:
             doc_db_path = self.get_document_specific_db_path(file_hash)
             doc_db_path.mkdir(parents=True, exist_ok=True)
             
+            # Create a new Chroma instance with DuckDB
             vectorstore = Chroma.from_documents(
                 documents=documents,
                 embedding=self.embeddings,
                 persist_directory=str(doc_db_path),
-                client_settings=self.chroma_settings  # Add the new settings
+                client_settings=self.chroma_settings,
+                collection_metadata={"hnsw:space": "cosine"}  # Use cosine similarity
             )
             vectorstore.persist()
             return vectorstore
@@ -415,10 +421,12 @@ class PDFProcessor:
             doc_db_path = self.get_document_specific_db_path(file_hash)
             
             if doc_db_path.exists() and any(doc_db_path.iterdir()):
+                # Load existing Chroma instance with DuckDB
                 vectorstore = Chroma(
                     persist_directory=str(doc_db_path),
                     embedding_function=self.embeddings,
-                    client_settings=self.chroma_settings  # Add the new settings
+                    client_settings=self.chroma_settings,
+                    collection_metadata={"hnsw:space": "cosine"}  # Use cosine similarity
                 )
                 logger.info(f"Vectorstore loaded for document hash: {file_hash}")
                 return vectorstore
