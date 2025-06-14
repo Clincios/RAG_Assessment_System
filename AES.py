@@ -298,11 +298,10 @@ class PDFProcessor:
         )
         # Configure Chroma settings with DuckDB
         self.chroma_settings = Settings(
-            chroma_db_impl="duckdb+parquet",  # Use DuckDB with Parquet storage
-            persist_directory=str(self.config.VECTOR_DB_DIR),
+            chroma_db_impl="duckdb",  # Use DuckDB implementation
+            persist_directory=str(self.config.VECTOR_DB_DIR),  # Persist to vector DB directory
             anonymized_telemetry=False,  # Disable telemetry
-            allow_reset=True,  # Allow resetting the database
-            is_persistent=True  # Enable persistence
+            allow_reset=True  # Allow resetting the database
         )
     
     def get_file_hash(self, file_path: Path) -> str:
