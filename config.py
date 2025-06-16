@@ -5,7 +5,7 @@ class SharedConfig:
     """Shared configuration for all RAG applications"""
     
     # API Keys
-    GOOGLE_API_KEY = os.getenv("GOOGLE_API_KEY", "AIzaSyAkHRbkUvKvnfzWpoX1pks8hNUc78PXqXs")
+    GOOGLE_API_KEY = os.getenv("GOOGLE_API_KEY")
     
     # Directory paths
     BASE_DIR = Path(__file__).parent
