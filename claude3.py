@@ -8,6 +8,10 @@ from pathlib import Path
 import logging
 from typing import List, Dict, Optional
 import shutil
+from dotenv import load_dotenv
+
+# Load environment variables from .env file
+load_dotenv()
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -36,7 +40,14 @@ class StreamlitCallbackHandler(BaseCallbackHandler):
 class PDFChatbotConfig:
     """Configuration class for the chatbot"""
     def __init__(self):
-        self.GOOGLE_API_KEY = os.getenv("GOOGLE_API_KEY", "AIzaSyAkHRbkUvKvnfzWpoX1pks8hNUc78PXqXs")
+        # Get API key from environment variable
+        self.GOOGLE_API_KEY = os.getenv("GOOGLE_API_KEY")
+        if not self.GOOGLE_API_KEY:
+            raise ValueError(
+                "GOOGLE_API_KEY not found in environment variables. "
+                "Please create a .env file with your API key or set it as an environment variable."
+            )
+        
         self.PDF_DIR = Path("pdfFiles")
         self.VECTOR_DB_DIR = Path("vectorDB")
         self.METADATA_FILE = Path("pdf_metadata.json")

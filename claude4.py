@@ -16,6 +16,10 @@ from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, PageBreak
 from reportlab.lib.colors import HexColor
 from reportlab.pdfgen import canvas
 import base64
+from dotenv import load_dotenv
+
+# Load environment variables from .env file
+load_dotenv()
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -266,7 +270,14 @@ class PDFExporter:
 class PDFChatbotConfig:
     """Configuration class for the chatbot"""
     def __init__(self):
-        self.GOOGLE_API_KEY = os.getenv("GOOGLE_API_KEY", "AIzaSyAkHRbkUvKvnfzWpoX1pks8hNUc78PXqXs")
+        # Get API key from environment variable
+        self.GOOGLE_API_KEY = os.getenv("GOOGLE_API_KEY")
+        if not self.GOOGLE_API_KEY:
+            raise ValueError(
+                "GOOGLE_API_KEY environment variable is not set. "
+                "Please create a .env file with your API key or set it in your environment."
+            )
+            
         self.PDF_DIR = Path("pdfFiles")
         self.VECTOR_DB_DIR = Path("vectorDB")
         self.METADATA_FILE = Path("pdf_metadata.json")
